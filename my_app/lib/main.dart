@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'profile_page.dart';
+import 'community_page.dart';
 
 void main() {
   runApp(const MyApp());
@@ -57,10 +59,10 @@ class _LoginPageState extends State<LoginPage> {
     }
     final data = jsonDecode(response.body);
     if (response.statusCode == 200) {
-      // 로그인 성공
+      final token = data['access_token'];
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const HomePage()),
+        MaterialPageRoute(builder: (context) => HomePage(token: token)),
       );
     } else {
       setState(() {
@@ -343,14 +345,63 @@ class _RegisterPageState extends State<RegisterPage> {
 
 // 임시 홈 화면 → 옷장 메인 화면으로 대체
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  final String token;
+  const HomePage({super.key, required this.token});
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
-  String? _activeFilter; // 'style', 'season', 'color' 등
+  String? _activeFilter;
+  Map<String, dynamic>? profileData;
+  bool isLoadingProfile = false;
+  // 아래는 프로필 관련 더미 데이터 (실제 로그인 정보와 연동 가능)
+  int itemCount = 3;
+  int likeCount = 50;
+  int postCount = 5;
+  List<String> styles = ['Active', 'Casual', 'Smart-Casual', 'Formal'];
+  List<String> selectedStyles = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchProfileAndSetState();
+  }
+
+  Future<void> _fetchProfileAndSetState() async {
+    setState(() { isLoadingProfile = true; });
+    final url = 'http://127.0.0.1:5000/api/auth/profile';
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ${widget.token}',
+    };
+    print('profile API 호출! token: ${widget.token}');
+    print('headers: ' + headers.toString());
+    final response = await http.get(
+      Uri.parse(url),
+      headers: headers,
+    );
+    print('statusCode: \'${response.statusCode}\'');
+    print('body: ' + response.body);
+    if (response.statusCode == 200) {
+      setState(() {
+        profileData = jsonDecode(response.body);
+        isLoadingProfile = false;
+      });
+    } else {
+      setState(() {
+        profileData = null;
+        isLoadingProfile = false;
+      });
+    }
+  }
+
+  void _onStyleChanged(List<String> newStyles) {
+    setState(() {
+      selectedStyles = newStyles;
+    });
+  }
 
   void _onFilterTap(String filter) {
     setState(() {
@@ -425,8 +476,34 @@ class _HomePageState extends State<HomePage> {
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.account_circle, color: Colors.black),
-            onPressed: () {},
+            icon: isLoadingProfile
+                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.account_circle, color: Colors.black),
+            onPressed: () {
+              if (profileData != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ProfilePage(
+                      username: profileData!['username'] ?? '',
+                      gender: profileData!['gender'] ?? '',
+                      birth: profileData!['birth'] ?? '',
+                      itemCount: 0,
+                      likeCount: 0,
+                      postCount: 0,
+                      styles: styles,
+                      selectedStyles: selectedStyles,
+                      token: widget.token,
+                    ),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('프로필 정보를 불러오지 못했습니다. 다시 시도해 주세요.')),
+                );
+                _fetchProfileAndSetState();
+              }
+            },
           ),
         ],
         title: Row(
@@ -440,21 +517,25 @@ class _HomePageState extends State<HomePage> {
         ),
         toolbarHeight: 60,
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline, size: 48),
-              onPressed: () {
-                // 옷 추가 기능 연결 예정
-              },
+      body: _selectedIndex == 2
+          ? (profileData != null
+              ? CommunityPage(token: widget.token, userId: profileData!['id'])
+              : const Center(child: CircularProgressIndicator()))
+          : Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline, size: 48),
+                    onPressed: () {
+                      // 옷 추가 기능 연결 예정
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('옷 추가', style: TextStyle(fontSize: 16)),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            const Text('옷 추가', style: TextStyle(fontSize: 16)),
-          ],
-        ),
-      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (idx) => setState(() => _selectedIndex = idx),

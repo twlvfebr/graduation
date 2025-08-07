@@ -13,6 +13,8 @@ dependencies:
 
   # 이 아래에 http 패키지를 추가합니다.
   http: ^1.2.1
+  image_picker: ^1.0.7
+  file_picker: ^6.1.1
 
   cupertino_icons: ^1.0.6
 
@@ -23,3 +25,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/profile_placeholder.png
