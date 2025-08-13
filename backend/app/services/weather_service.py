@@ -16,11 +16,11 @@ def get_weather_by_city(city_name):
             'city': data['name'],
             'temp': data['main']['temp'],
             'weather': data['weather'][0]['main'],
-            'description': data['weather'][0]['description']
+            'description': data['weather'][0]['description'],
         }
     except Exception as e:
         import traceback
         print("==== 예외 발생 ====")
         print(e)
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500 
+        return jsonify({'error': str(e)}), 500

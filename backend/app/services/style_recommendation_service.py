@@ -14,20 +14,15 @@ import os
 class StyleRecommendationService:
     def __init__(self):
         try:
-            # 1) from_pretrained가 튜플을 반환한다면 아래처럼 언패킹:
-            # self.model, _ = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-            
-            # 2) 일반적으로는 단일 객체 반환, 타입 검사 오류 시 아래와 같이 type:ignore 처리:
-            self.model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")  # type: ignore
+            self.model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
             self.processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-            
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.model.to(self.device)
             logging.info("CLIP 모델 로드 완료")
         except Exception as e:
             logging.error(f"CLIP 모델 로드 실패: {e}")
             raise
-
+    
     def load_wardrobe_data(self, user_id: int) -> List[Dict]:
         try:
             wardrobe_items = db.session.query(WardrobeItem).join(Wardrobe).filter(
@@ -44,9 +39,11 @@ class StyleRecommendationService:
                     'name': item.name,
                     'category': item.category,
                     'color': item.color,
-                    'brand': item.brand
+                    'brand': item.brand,
                 }
+
                 temperature_range = self._get_temperature_range(item.category)
+
                 items_data.append({
                     'id': item.item_id,
                     'image_path': str(image_path),
@@ -55,10 +52,12 @@ class StyleRecommendationService:
                     'created_at': item.created_at,
                     'image_embedding': item.image_embedding,
                     'text_embedding': item.text_embedding,
-                    'combined_embedding': item.combined_embedding
+                    'combined_embedding': item.combined_embedding,
                 })
+
             logging.info(f"사용자 {user_id}의 옷장 데이터 {len(items_data)}개 로드 완료")
             return items_data
+
         except Exception as e:
             logging.error(f"옷장 데이터 로드 실패: {e}")
             return []
@@ -68,7 +67,7 @@ class StyleRecommendationService:
             '패딩': (-10, 10), '코트': (0, 15), '자켓': (5, 20), '니트': (5, 25),
             '맨투맨': (10, 25), '후드티': (10, 25), '셔츠': (15, 30), '티셔츠': (20, 35),
             '반팔': (25, 40), '민소매': (25, 40), '청바지': (0, 35), '슬랙스': (10, 30),
-            '반바지': (20, 40), '치마': (15, 35), '운동화': (0, 40), '구두': (5, 35), '샌들': (20, 40)
+            '반바지': (20, 40), '치마': (15, 35), '운동화': (0, 40), '구두': (5, 35), '샌들': (20, 40),
         }
         return temperature_ranges.get(category, (10, 30))
 
@@ -90,7 +89,7 @@ class StyleRecommendationService:
                 'weather': data['weather'][0]['main'],
                 'description': data['weather'][0]['description'],
                 'humidity': data['main']['humidity'],
-                'wind_speed': data['wind']['speed']
+                'wind_speed': data['wind']['speed'],
             }
         except Exception as e:
             logging.error(f"날씨 데이터 로드 실패: {e}")
@@ -100,6 +99,7 @@ class StyleRecommendationService:
         suitable_items = []
         for item in items:
             min_temp, max_temp = item['temperature_range']
+            # 온도 범위 내 혹은 허용 오차 5도 내 포함시 포함
             if min_temp <= current_temp <= max_temp or abs(current_temp - min_temp) <= 5 or abs(current_temp - max_temp) <= 5:
                 suitable_items.append(item)
         logging.info(f"온도 필터링 완료: {len(suitable_items)}/{len(items)}개 아이템 선택")
@@ -130,7 +130,6 @@ class StyleRecommendationService:
     def get_text_embedding(self, text: str) -> np.ndarray:
         try:
             inputs = self.processor(text=[text], return_tensors="pt", padding=True)
-            # processor의 반환값 딕셔너리 각 tensor를 device로 이동
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             with torch.no_grad():
                 text_features = self.model.get_text_features(**inputs)
@@ -148,8 +147,8 @@ class StyleRecommendationService:
             weather_data = self.get_weather_data(city_name)
             if not weather_data:
                 return []
-
             current_temp = weather_data['temperature']
+
             suitable_items = self.filter_by_temperature(wardrobe_items, current_temp)
             if not suitable_items:
                 return []
@@ -160,8 +159,11 @@ class StyleRecommendationService:
 
             recommendations = []
             for item in suitable_items:
-                combined_embedding = item['combined_embedding']
-                similarity = self.calculate_cosine_similarity(user_style_embedding, combined_embedding)
+                combined_embedding = item.get('combined_embedding')
+                if combined_embedding is not None:
+                    similarity = self.calculate_cosine_similarity(user_style_embedding, combined_embedding)
+                else:
+                    similarity = 0.0
                 recommendations.append({
                     'item_id': item['id'],
                     'image_path': item['image_path'],
@@ -171,6 +173,7 @@ class StyleRecommendationService:
                 })
             recommendations.sort(key=lambda x: x['similarity_score'], reverse=True)
             return recommendations[:top_n]
+
         except Exception as e:
             logging.error(f"추천 실패: {e}")
             return []
