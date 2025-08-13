@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from ..models.models import db, WardrobeItem, User
+from ..models.models import db, WardrobeItem, User, Wardrobe
 from ..services.recommendation_service import RecommendationService
 import os
 from werkzeug.utils import secure_filename
@@ -48,16 +48,24 @@ def add_item():
     # CLIP 임베딩 계산
     embedding = recommendation_service.get_image_embedding(filepath)
     
+    # 사용자의 기본 옷장 찾기 또는 생성
+    user_wardrobe = Wardrobe.query.filter_by(user_id=current_user_id).first()
+    if not user_wardrobe:
+        user_wardrobe = Wardrobe(user_id=current_user_id)
+        db.session.add(user_wardrobe)
+        db.session.flush()  # wardrobe_id를 얻기 위해
+    
+    # 웹에서 접근 가능한 이미지 경로 생성
+    web_image_path = f'/uploads/{filename}'
+    
     # 새 의류 아이템 생성
     new_item = WardrobeItem(
-        user_id=current_user_id,
+        wardrobe_id=user_wardrobe.wardrobe_id,
         name=request.form.get('name', ''),
-        category=detected_items[0]['category'],
-        subcategory=detected_items[0]['subcategory'],
-        image_path=filepath,
+        category=request.form.get('category', ''),
         color=request.form.get('color', ''),
         brand=request.form.get('brand', ''),
-        embedding=embedding.tolist()
+        image_path=web_image_path
     )
     
     try:
@@ -67,10 +75,9 @@ def add_item():
         return jsonify({
             'message': 'Item added successfully',
             'item': {
-                'id': new_item.id,
+                'id': new_item.item_id,
                 'name': new_item.name,
                 'category': new_item.category,
-                'subcategory': new_item.subcategory,
                 'image_path': new_item.image_path,
                 'color': new_item.color,
                 'brand': new_item.brand
@@ -86,27 +93,29 @@ def add_item():
 def get_items():
     current_user_id = get_jwt_identity()
     category = request.args.get('category')
-    subcategory = request.args.get('subcategory')
     
-    query = WardrobeItem.query.filter_by(user_id=current_user_id)
+    # 사용자의 옷장 찾기
+    user_wardrobe = Wardrobe.query.filter_by(user_id=current_user_id).first()
+    if not user_wardrobe:
+        return jsonify({'items': []}), 200
+    
+    # 옷장의 아이템들 조회
+    query = WardrobeItem.query.filter_by(wardrobe_id=user_wardrobe.wardrobe_id)
     
     if category:
         query = query.filter_by(category=category)
-    if subcategory:
-        query = query.filter_by(subcategory=subcategory)
     
     items = query.all()
     
     return jsonify({
         'items': [{
-            'id': item.id,
+            'id': item.item_id,
             'name': item.name,
             'category': item.category,
-            'subcategory': item.subcategory,
             'image_path': item.image_path,
             'color': item.color,
             'brand': item.brand,
-            'created_at': item.created_at.isoformat()
+            'created_at': item.created_at.isoformat() if item.created_at else None
         } for item in items]
     }), 200
 

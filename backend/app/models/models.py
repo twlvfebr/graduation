@@ -13,6 +13,7 @@ class User(db.Model):
     gender = db.Column(db.String(10))
     signup_date = db.Column(db.DateTime, default=datetime.utcnow)
     birth = db.Column(db.Date)
+    profile_image = db.Column(db.String(255))  # 프로필 이미지 경로 추가
     
     profile = db.relationship('Profile', uselist=False, backref='user')
     wardrobes = db.relationship('Wardrobe', backref='user', cascade='all, delete-orphan')

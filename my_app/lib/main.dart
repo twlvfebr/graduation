@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'profile_page.dart';
 import 'community_page.dart';
+import 'add_clothing_flow.dart';
 
 void main() {
   runApp(const MyApp());
@@ -528,7 +529,12 @@ class _HomePageState extends State<HomePage> {
                   IconButton(
                     icon: const Icon(Icons.add_circle_outline, size: 48),
                     onPressed: () {
-                      // 옷 추가 기능 연결 예정
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => AddClothingStep1(token: widget.token),
+                        ),
+                      );
                     },
                   ),
                   const SizedBox(height: 8),
