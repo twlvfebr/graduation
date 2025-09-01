@@ -8,8 +8,9 @@ import 'dart:convert';
 // 1단계: 사진 촬영/선택 화면
 class AddClothingStep1 extends StatefulWidget {
   final String token;
+  final String? preselectedCategory;
   
-  const AddClothingStep1({super.key, required this.token});
+  const AddClothingStep1({super.key, required this.token, this.preselectedCategory});
   
   @override
   State<AddClothingStep1> createState() => _AddClothingStep1State();
@@ -247,6 +248,7 @@ class _AddClothingStep1State extends State<AddClothingStep1> {
                             builder: (context) => AddClothingStep2(
                               token: widget.token,
                               selectedImage: _selectedImage!,
+                              preselectedCategory: widget.preselectedCategory,
                             ),
                           ),
                         );
@@ -276,11 +278,13 @@ class _AddClothingStep1State extends State<AddClothingStep1> {
 class AddClothingStep2 extends StatefulWidget {
   final String token;
   final File selectedImage;
+  final String? preselectedCategory;
   
   const AddClothingStep2({
     super.key,
     required this.token,
     required this.selectedImage,
+    this.preselectedCategory,
   });
   
   @override
@@ -290,6 +294,8 @@ class AddClothingStep2 extends StatefulWidget {
 class _AddClothingStep2State extends State<AddClothingStep2> {
   String? selectedCategory;
   String? selectedSubcategory;
+  String? selectedStyle;
+  String? selectedSeason;
   final TextEditingController brandController = TextEditingController();
 
   final Map<String, List<String>> categories = {
@@ -299,6 +305,29 @@ class _AddClothingStep2State extends State<AddClothingStep2> {
     '신발': ['운동화', '구두', '부츠', '샌들', '슬리퍼', '하이힐'],
     '악세서리': ['모자', '가방', '벨트', '시계', '목걸이', '귀걸이'],
   };
+
+  // 영어 카테고리를 한글로 변환하는 맵
+  final Map<String, String> categoryMapping = {
+    'top': '상의',
+    'bottom': '하의',
+    'outer': '아우터',
+    'shoes': '신발',
+  };
+
+  // 스타일 옵션
+  final List<String> styleOptions = ['Active', 'Casual', 'Formal'];
+  
+  // 계절 옵션
+  final List<String> seasonOptions = ['봄', '여름', '가을', '겨울'];
+
+  @override
+  void initState() {
+    super.initState();
+    // 미리 선택된 카테고리가 있으면 설정
+    if (widget.preselectedCategory != null) {
+      selectedCategory = categoryMapping[widget.preselectedCategory] ?? widget.preselectedCategory;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -390,6 +419,52 @@ class _AddClothingStep2State extends State<AddClothingStep2> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 24),
+                  // 스타일 선택
+                  const Text(
+                    '스타일',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: styleOptions.map((style) => 
+                      FilterChip(
+                        label: Text(style),
+                        selected: selectedStyle == style,
+                        onSelected: (selected) {
+                          setState(() {
+                            selectedStyle = selected ? style : null;
+                          });
+                        },
+                        selectedColor: Colors.black.withOpacity(0.1),
+                        checkmarkColor: Colors.black,
+                      ),
+                    ).toList(),
+                  ),
+                  const SizedBox(height: 24),
+                  // 계절 선택
+                  const Text(
+                    '계절',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: seasonOptions.map((season) => 
+                      FilterChip(
+                        label: Text(season),
+                        selected: selectedSeason == season,
+                        onSelected: (selected) {
+                          setState(() {
+                            selectedSeason = selected ? season : null;
+                          });
+                        },
+                        selectedColor: Colors.black.withOpacity(0.1),
+                        checkmarkColor: Colors.black,
+                      ),
+                    ).toList(),
+                  ),
                 ],
               ),
             ),
@@ -408,6 +483,8 @@ class _AddClothingStep2State extends State<AddClothingStep2> {
                               category: selectedCategory!,
                               subcategory: selectedSubcategory!,
                               brand: brandController.text,
+                              style: selectedStyle ?? '',
+                              season: selectedSeason ?? '',
                             ),
                           ),
                         );
@@ -442,6 +519,8 @@ class AddClothingStep3 extends StatefulWidget {
   final String category;
   final String subcategory;
   final String brand;
+  final String style;
+  final String season;
   
   const AddClothingStep3({
     super.key,
@@ -450,6 +529,8 @@ class AddClothingStep3 extends StatefulWidget {
     required this.category,
     required this.subcategory,
     required this.brand,
+    required this.style,
+    required this.season,
   });
   
   @override
@@ -489,7 +570,7 @@ class _AddClothingStep3State extends State<AddClothingStep3> {
     try {
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('http://127.0.0.1:5001/api/wardrobe/items'),
+        Uri.parse('http://192.168.3.1:5001/api/wardrobe/items'),
       );
 
       request.headers['Authorization'] = 'Bearer ${widget.token}';
@@ -498,9 +579,10 @@ class _AddClothingStep3State extends State<AddClothingStep3> {
       );
       request.fields['name'] = '${widget.subcategory} 아이템';
       request.fields['category'] = widget.category;
-      request.fields['subcategory'] = widget.subcategory;
       request.fields['color'] = selectedColor!;
       request.fields['brand'] = widget.brand;
+      request.fields['style'] = widget.style;
+      request.fields['season'] = widget.season;
 
       final response = await request.send();
       final responseData = await response.stream.bytesToString();
@@ -510,11 +592,13 @@ class _AddClothingStep3State extends State<AddClothingStep3> {
 
       if (response.statusCode == 201) {
         if (mounted) {
+          // 메인 화면으로 돌아가면서 성공 메시지 표시
           Navigator.popUntil(context, (route) => route.isFirst);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('옷이 성공적으로 추가되었습니다!'),
+              content: Text('옷이 성공적으로 추가되었습니다! 프로필에서 확인하세요.'),
               backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
             ),
           );
         }

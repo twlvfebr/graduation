@@ -43,7 +43,7 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
     // 실제 서버 연동
-    final url = 'http://127.0.0.1:5000/api/auth/login';
+    final url = 'http://192.168.3.1:5001/api/auth/login';
     final response = await http.post(
       Uri.parse(url),
       headers: {'Content-Type': 'application/json'},
@@ -355,8 +355,11 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
   String? _activeFilter;
+  String? _selectedCategory;
   Map<String, dynamic>? profileData;
   bool isLoadingProfile = false;
+  List<Map<String, dynamic>> wardrobeItems = [];
+  bool isLoadingItems = false;
   // 아래는 프로필 관련 더미 데이터 (실제 로그인 정보와 연동 가능)
   int itemCount = 3;
   int likeCount = 50;
@@ -368,6 +371,33 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _fetchProfileAndSetState();
+    _fetchWardrobeItems();
+  }
+
+  Future<void> _fetchWardrobeItems([String? category]) async {
+    setState(() { isLoadingItems = true; });
+    try {
+      String url = 'http://127.0.0.1:5001/api/wardrobe/items';
+      if (category != null) {
+        url += '?category=$category';
+      }
+      
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer ${widget.token}'},
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          wardrobeItems = List<Map<String, dynamic>>.from(data['items'] ?? []);
+        });
+      }
+    } catch (e) {
+      print('옷장 아이템 로드 실패: $e');
+    } finally {
+      setState(() { isLoadingItems = false; });
+    }
   }
 
   Future<void> _fetchProfileAndSetState() async {
@@ -510,10 +540,10 @@ class _HomePageState extends State<HomePage> {
         title: Row(
           mainAxisAlignment: MainAxisAlignment.start,
           children: [
-            _buildFilterButton('전체', null),
-            _buildFilterButton('스타일', 'style'),
-            _buildFilterButton('색상', 'color'),
-            _buildFilterButton('계절', 'season'),
+            _buildCategoryButton('상의', 'top'),
+            _buildCategoryButton('하의', 'bottom'),
+            _buildCategoryButton('아우터', 'outer'),
+            _buildCategoryButton('신발', 'shoes'),
           ],
         ),
         toolbarHeight: 60,
@@ -522,26 +552,177 @@ class _HomePageState extends State<HomePage> {
           ? (profileData != null
               ? CommunityPage(token: widget.token, userId: profileData!['id'])
               : const Center(child: CircularProgressIndicator()))
-          : Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline, size: 48),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => AddClothingStep1(token: widget.token),
+          : Column(
+              children: [
+                // 카테고리 필터 정보
+                if (_selectedCategory != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    color: Colors.grey[100],
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '$_selectedCategory (${wardrobeItems.length}개)',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                         ),
-                      );
-                    },
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _selectedCategory = null;
+                            });
+                            _fetchWardrobeItems();
+                          },
+                          child: const Text('전체 보기'),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text('옷 추가', style: TextStyle(fontSize: 16)),
-                ],
-              ),
+                // 옷장 아이템 그리드
+                Expanded(
+                  child: isLoadingItems
+                      ? const Center(child: CircularProgressIndicator())
+                      : wardrobeItems.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.checkroom,
+                                    size: 64,
+                                    color: Colors.grey[400],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _selectedCategory != null
+                                        ? '$_selectedCategory 카테고리에\n등록된 옷이 없습니다.'
+                                        : '등록된 옷이 없습니다.\n아래 버튼으로 옷을 추가해보세요!',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: GridView.builder(
+                                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  crossAxisSpacing: 16,
+                                  mainAxisSpacing: 16,
+                                  childAspectRatio: 0.8,
+                                ),
+                                itemCount: wardrobeItems.length,
+                                itemBuilder: (context, index) {
+                                  final item = wardrobeItems[index];
+                                  return Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.grey[300]!),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.grey.withOpacity(0.1),
+                                          spreadRadius: 1,
+                                          blurRadius: 3,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: Container(
+                                            width: double.infinity,
+                                            decoration: BoxDecoration(
+                                              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                                              color: Colors.grey[200],
+                                            ),
+                                            child: item['image_path'] != null
+                                                ? ClipRRect(
+                                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                                                    child: Image.network(
+                                                      'http://127.0.0.1:5001${item['image_path']}',
+                                                      fit: BoxFit.cover,
+                                                      errorBuilder: (context, error, stackTrace) {
+                                                        return const Icon(Icons.image_not_supported, size: 32, color: Colors.grey);
+                                                      },
+                                                    ),
+                                                  )
+                                                : const Icon(Icons.checkroom, size: 32, color: Colors.grey),
+                                          ),
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.all(8),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                item['name'] ?? '이름 없음',
+                                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Row(
+                                                children: [
+                                                  if (item['style'] != null && item['style'].isNotEmpty)
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.blue[100],
+                                                        borderRadius: BorderRadius.circular(8),
+                                                      ),
+                                                      child: Text(
+                                                        item['style'],
+                                                        style: TextStyle(fontSize: 10, color: Colors.blue[800]),
+                                                      ),
+                                                    ),
+                                                  const SizedBox(width: 4),
+                                                  if (item['season'] != null && item['season'].isNotEmpty)
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.green[100],
+                                                        borderRadius: BorderRadius.circular(8),
+                                                      ),
+                                                      child: Text(
+                                                        item['season'],
+                                                        style: TextStyle(fontSize: 10, color: Colors.green[800]),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                ),
+              ],
             ),
+      floatingActionButton: _selectedIndex != 2
+          ? FloatingActionButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AddClothingStep1(token: widget.token),
+                  ),
+                );
+              },
+              backgroundColor: Colors.black,
+              child: const Icon(Icons.add, color: Colors.white),
+            )
+          : null,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (idx) => setState(() => _selectedIndex = idx),
@@ -568,4 +749,51 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
-} 
+
+  Widget _buildCategoryButton(String label, String category) {
+    final Map<String, String> categoryMapping = {
+      'top': '상의',
+      'bottom': '하의',
+      'outer': '아우터',
+      'shoes': '신발',
+    };
+    
+    final koreanCategory = categoryMapping[category];
+    final isSelected = _selectedCategory == koreanCategory;
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: ElevatedButton(
+        onPressed: () => _onCategoryTap(category),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isSelected ? Colors.black : Colors.white,
+          foregroundColor: isSelected ? Colors.white : Colors.black,
+          elevation: 0,
+          side: BorderSide(color: isSelected ? Colors.black : Colors.grey),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          minimumSize: const Size(60, 36),
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 12)),
+      ),
+    );
+  }
+
+  void _onCategoryTap(String category) {
+    // 카테고리 매핑
+    final Map<String, String> categoryMapping = {
+      'top': '상의',
+      'bottom': '하의',
+      'outer': '아우터',
+      'shoes': '신발',
+    };
+    
+    final koreanCategory = categoryMapping[category];
+    
+    setState(() {
+      _selectedCategory = _selectedCategory == koreanCategory ? null : koreanCategory;
+    });
+    
+    // 선택된 카테고리로 필터링
+    _fetchWardrobeItems(_selectedCategory);
+  }
+}
