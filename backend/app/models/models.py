@@ -193,7 +193,11 @@ class WardrobeItem(db.Model):
     category = db.Column(db.String(50))
     color = db.Column(db.String(30))
     brand = db.Column(db.String(50))
+    style = db.Column(db.String(30))  # active, casual, formal
+    season = db.Column(db.String(20))  # 봄, 여름, 가을, 겨울
     image_path = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
+    image_embedding = db.Column(db.LargeBinary)  # 이미지 임베딩 저장용
+    text_embedding = db.Column(db.LargeBinary)   # 텍스트 임베딩 저장용
+    combined_embedding = db.Column(db.LargeBinary) # 결합 임베딩 저장용
     wardrobe = db.relationship('Wardrobe', backref='items') 

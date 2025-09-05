@@ -25,35 +25,57 @@ class StyleRecommendationService:
     
     def load_wardrobe_data(self, user_id: int) -> List[Dict]:
         try:
+            # 사용자 옷장 아이템 조회
             wardrobe_items = db.session.query(WardrobeItem).join(Wardrobe).filter(
                 Wardrobe.user_id == user_id
             ).all()
+            
             items_data = []
             for item in wardrobe_items:
-                image_path = Path(item.image_path) if item.image_path else None
-                if not image_path or not image_path.exists():
-                    logging.warning(f"이미지 파일이 존재하지 않습니다: {image_path}")
+                try:
+                    # 이미지 경로 유효성 검사
+                    image_path = None
+                    if item.image_path:
+                        try:
+                            img_path = Path(item.image_path)
+                            if img_path.exists():
+                                image_path = str(img_path)
+                            else:
+                                logging.warning(f"이미지 파일이 존재하지 않습니다: {item.image_path}")
+                        except Exception as img_err:
+                            logging.error(f"이미지 경로 처리 중 오류: {img_err}")
+                    
+                    # 메타데이터 구성
+                    metadata = {
+                        'name': getattr(item, 'name', '알 수 없음'),
+                        'category': getattr(item, 'category', '기타'),
+                        'color': getattr(item, 'color', ''),
+                        'brand': getattr(item, 'brand', ''),
+                    }
+                    
+                    # 카테고리 기반 온도 범위 설정
+                    category = getattr(item, 'category', '기타')
+                    temperature_range = self._get_temperature_range(category)
+                    
+                    # 임베딩 데이터 가져오기 (없을 경우 None)
+                    item_data = {
+                        'id': item.item_id,
+                        'image_path': image_path,
+                        'metadata': metadata,
+                        'temperature_range': temperature_range,
+                        'created_at': getattr(item, 'created_at', datetime.utcnow()),
+                    }
+                    
+                    # 임베딩 필드가 있는지 확인 후 추가
+                    for embed_type in ['image_embedding', 'text_embedding', 'combined_embedding']:
+                        if hasattr(item, embed_type):
+                            item_data[embed_type] = getattr(item, embed_type)
+                    
+                    items_data.append(item_data)
+                    
+                except Exception as item_err:
+                    logging.error(f"아이템 처리 중 오류 (ID: {getattr(item, 'item_id', 'unknown')}): {item_err}")
                     continue
-
-                metadata = {
-                    'name': item.name,
-                    'category': item.category,
-                    'color': item.color,
-                    'brand': item.brand,
-                }
-
-                temperature_range = self._get_temperature_range(item.category)
-
-                items_data.append({
-                    'id': item.item_id,
-                    'image_path': str(image_path),
-                    'metadata': metadata,
-                    'temperature_range': temperature_range,
-                    'created_at': item.created_at,
-                    'image_embedding': item.image_embedding,
-                    'text_embedding': item.text_embedding,
-                    'combined_embedding': item.combined_embedding,
-                })
 
             logging.info(f"사용자 {user_id}의 옷장 데이터 {len(items_data)}개 로드 완료")
             return items_data
